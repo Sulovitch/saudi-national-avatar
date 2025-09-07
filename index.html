@@ -23,7 +23,21 @@ body::before {
 body> * { position:relative; z-index:1; }
 h1 { color:#fff; margin-bottom:10px; font-size:20px; text-align:center; transition:color 0.5s ease; }
 .controls { display:flex; flex-direction:column; width:100%; max-width:400px; margin-bottom:15px; }
-.controls input, .controls select { padding:8px; border-radius:8px; border:1px solid #fff; margin-bottom:8px; background:#222; color:#fff; transition:border-color 0.5s ease, color 0.5s ease; }
+.controls input, .controls select {
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #fff;
+  margin-bottom: 8px;
+  background: #222;
+  color: #fff;
+  transition: border-color 0.5s ease, color 0.5s ease;
+
+  /* تعديل العرض ليكون نفس عرض الـ input */
+  width: 100%;
+  box-sizing: border-box; /* يضمن عدم تجاوز البُعد الكلي للحدود */
+  font-size: 16px; /* يمكنك زيادة حجم النص إذا أحببت */
+}
+
 #canvas { border-radius:15px; box-shadow:0px 5px 15px rgba(0,0,0,0.5); background:#222; touch-action:none; width:100%; max-width:400px; }
 
 .overlay-controls {
