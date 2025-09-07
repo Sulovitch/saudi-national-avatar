@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>طابع اليوم الوطني</title>
+<style>
+@font-face {
+  font-family: 'MyCustomFont';
+  src: url('fonts/Saudi-Bold.ttf') format('truetype');
+}
+body, input, select, button, h1 { font-family: 'MyCustomFont', sans-serif; margin:0; padding:0; }
+body {
+  display:flex; flex-direction:column; align-items:center; padding:15px;
+  color:#fff; overflow:auto; position:relative; min-height:100vh; background:#111;
+}
+body::before {
+  content:''; position:fixed; top:0; left:0; width:100%; height:100%;
+  background-image:url('images/background.png'); background-size:cover; background-repeat:repeat-y;
+  animation:moveBg 30s linear infinite; filter:blur(5px) brightness(0.3); z-index:0;
+}
+@keyframes moveBg { 0%{background-position:0 0;} 100%{background-position:0 -1000px;} }
+body> * { position:relative; z-index:1; }
+h1 { color:#fff; margin-bottom:10px; font-size:20px; text-align:center; transition:color 0.5s ease; }
+.controls { display:flex; flex-direction:column; width:100%; max-width:400px; margin-bottom:15px; }
+.controls input, .controls select { padding:8px; border-radius:8px; border:1px solid #fff; margin-bottom:8px; background:#222; color:#fff; transition:border-color 0.5s ease, color 0.5s ease; }
+#canvas { border-radius:15px; box-shadow:0px 5px 15px rgba(0,0,0,0.5); background:#222; touch-action:none; width:100%; max-width:400px; }
+
+.overlay-controls {
+  position:absolute;
+  top:10px;
+  right:10px;
+  display:flex; 
+  flex-direction:column; 
+  gap:8px;
+  background: rgba(0,0,0,0.3);
+  padding:5px; 
+  border-radius:10px;
+  z-index:2; 
+  cursor:move;
+  max-width:90px;
+  pointer-events:auto;
+}
+.overlay-controls select { margin-bottom:5px; width:80px; background:#222; color:#fff; border:1px solid #fff; }
+.overlay-controls button {
+  width:40px; height:40px; font-size:20px; background:rgba(255,255,255,0.2); color:#fff;
+  border-radius:8px; border:none; cursor:pointer; transition: background 0.2s;
+}
+.overlay-controls button:hover { background:rgba(255,255,255,0.5); }
+#download { margin-top:15px; padding:12px 20px; font-size:18px; background:#047857; color:white; border:none; border-radius:10px; cursor:pointer; transition: background 0.3s; }
+#download:hover { background:#059669; }
+
+/* العبارة العاطفية */
+#meaning {
+  margin-top:12px;
+  font-size:22px;
+  font-weight:bold;
+  text-align:center;
+  line-height:1.6;
+  color:#fff;
+  max-width:350px;
+  opacity:0;
+  transition: opacity 0.8s ease, color 0.5s ease;
+}
+
+/* وميض النص */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+#meaning.blink {
+  animation: blink 1.2s infinite;
+}
+</style>
+</head>
+
+<body>
+
+<h1>خلّي صورتك تحكي الوطنية </h1>
+
+<div class="controls">
+  <input type="file" id="avatarUpload" accept="image/*">
+  <select id="ornamentSelect">
+    <option value="" disabled selected>اختر زخرفة</option>
+    <option value="ornament1.png">الأصالة</option>
+    <option value="ornament2.png">الجود</option>
+    <option value="ornament3.png">الرؤية</option>
+    <option value="ornament4.png">الطموح</option>
+    <option value="ornament5.png">الفزعة</option>
+    <option value="ornament6.png">الكرم</option>
+  </select>
+</div>
+
+<div style="position:relative; width:100%; max-width:400px;">
+  <canvas id="canvas" width="400" height="400"></canvas>
+
+  <div class="overlay-controls" id="overlayControls">
+    <select id="controlTarget">
+      <option value="avatar">الصورة</option>
+      <option value="stamp">الزخرفة</option>
+    </select>
+    <button id="zoomIn">+</button>
+    <button id="zoomOut">-</button>
+    <button id="rotateLeft">⭯</button>
+    <button id="rotateRight">⭮</button>
+  </div>
+</div>
+
+<div id="meaning"></div>
+
+<button id="download">تحميل الصورة</button>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = true;
+ctx.imageSmoothingQuality = "high";
+
+const upload = document.getElementById('avatarUpload');
+const ornamentSelect = document.getElementById('ornamentSelect');
+const downloadBtn = document.getElementById('download');
+const zoomInBtn = document.getElementById('zoomIn');
+const zoomOutBtn = document.getElementById('zoomOut');
+const rotateLeftBtn = document.getElementById('rotateLeft');
+const rotateRightBtn = document.getElementById('rotateRight');
+const controlTargetSelect = document.getElementById('controlTarget');
+const overlayControls = document.getElementById('overlayControls');
+const meaningBox = document.getElementById('meaning');
+
+let avatar = { img:null, x:0, y:0, scale:1, rotation:0 };
+let stamp = { img:null, x:50, y:50, scale:1, rotation:0 };
+let lastStampState = { x:50, y:50, scale:1, rotation:0 };
+let target = 'avatar';
+
+const ornamentColors = {
+  'ornament1.png':'#348017',
+  'ornament2.png':'#461B7E',
+  'ornament3.png':'#A36419',
+  'ornament4.png':'#C12283',
+  'ornament5.png':'#CC4C4C',
+  'ornament6.png':'#1A99A3'
+};
+
+const ornamentMeanings = {
+  'ornament1.png':'صورتك تعكس الأصالة وفخرك بهويتك',
+  'ornament2.png':'صورتك تنبض بالجود وعطاءك الدائم',
+  'ornament3.png':'صورتك تحفز الرؤية والطموح نحو المستقبل',
+  'ornament4.png':'صورتك تشعل الطموح لتحقيق المستحيل',
+  'ornament5.png':'صورتك تجمع الفزعة وتثبت تلاحمك مع من حولك',
+  'ornament6.png':'صورتك تعكس الكرم وقلوبك المفتوحة'
+};
+
+controlTargetSelect.addEventListener('change', e=> target=e.target.value);
+
+upload.addEventListener('change', function(){
+  const file=this.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=function(e){
+    const img=new Image(); img.crossOrigin="anonymous"; img.src=e.target.result;
+    img.onload=()=>{ avatar.img=img; 
+      const scaleX=canvas.width/img.width, scaleY=canvas.height/img.height;
+      avatar.scale=Math.max(scaleX, scaleY);
+      avatar.x=(canvas.width - img.width*avatar.scale)/2;
+      avatar.y=(canvas.height - img.height*avatar.scale)/2;
+      drawCanvas();
+    }
+  }
+  reader.readAsDataURL(file);
+});
+
+ornamentSelect.addEventListener('change', ()=>{
+  if(!ornamentSelect.value) return;
+  const img=new Image(); 
+  img.crossOrigin="anonymous"; 
+  img.src="images/"+ornamentSelect.value+"?t="+Date.now();
+  img.onload=()=>{
+    stamp.img=img; 
+    stamp.x=lastStampState.x; stamp.y=lastStampState.y; 
+    stamp.scale=lastStampState.scale; stamp.rotation=lastStampState.rotation;
+    drawCanvas(); 
+    const color = ornamentColors[ornamentSelect.value];
+    document.querySelectorAll('.overlay-controls button').forEach(btn=>{
+      btn.style.background=color; btn.style.color='#fff'; 
+    });
+    document.getElementById('download').style.background=color;
+    document.querySelector('h1').style.color=color;
+    ornamentSelect.style.borderColor=color; upload.style.borderColor=color;
+    ornamentSelect.style.color='#fff'; upload.style.color='#fff';
+
+    meaningBox.style.opacity = 0;
+    meaningBox.classList.remove('blink');
+    setTimeout(()=>{
+      meaningBox.textContent = ornamentMeanings[ornamentSelect.value] || '';
+      meaningBox.style.color = color;
+      meaningBox.style.opacity = 1;
+      setTimeout(()=>{ meaningBox.classList.add('blink'); },50);
+    }, 200);
+  }
+});
+
+function drawCanvas(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle="#333"; ctx.fillRect(0,0,canvas.width,canvas.height);
+  if(avatar.img){ const w=avatar.img.width*avatar.scale; const h=avatar.img.height*avatar.scale; ctx.save(); ctx.translate(avatar.x + w/2, avatar.y + h/2); ctx.rotate(avatar.rotation); ctx.drawImage(avatar.img, -w/2, -h/2, w, h); ctx.restore(); }
+  if(stamp.img){ const sw=stamp.img.width*stamp.scale; const sh=stamp.img.height*stamp.scale; ctx.save(); ctx.translate(stamp.x + sw/2, stamp.y + sh/2); ctx.rotate(stamp.rotation); ctx.drawImage(stamp.img, -sw/2, -sh/2, sw, sh); ctx.restore(); }
+}
+
+let dragging=false, dragTarget=null, offsetX=0, offsetY=0;
+function startDrag(x,y){ if(stamp.img && isInside(x,y,stamp)){ dragTarget=stamp; dragging=true; offsetX=x-stamp.x; offsetY=y-stamp.y; } else if(avatar.img && isInside(x,y,avatar)){ dragTarget=avatar; dragging=true; offsetX=x-avatar.x; offsetY=y-avatar.y; }}
+canvas.addEventListener('mousedown', e=> startDrag(e.offsetX, e.offsetY));
+canvas.addEventListener('mousemove', e=>{ if(dragging && dragTarget){ dragTarget.x=e.offsetX-offsetX; dragTarget.y=e.offsetY-offsetY; drawCanvas(); }} );
+canvas.addEventListener('mouseup', ()=>{dragging=false; dragTarget=null; lastStampState={...stamp};});
+canvas.addEventListener('touchstart', e=>{ const rect=canvas.getBoundingClientRect(); startDrag(e.touches[0].clientX-rect.left, e.touches[0].clientY-rect.top);});
+canvas.addEventListener('touchmove', e=>{ const rect=canvas.getBoundingClientRect(); if(dragging && dragTarget){ dragTarget.x=e.touches[0].clientX-rect.left-offsetX; dragTarget.y=e.touches[0].clientY-rect.top-offsetY; drawCanvas(); }} );
+canvas.addEventListener('touchend', ()=>{
+  dragging = false;
+  dragTarget = null;
+  lastStampState = { ...stamp };
+});
+
+function isInside(x, y, obj){ return x >= obj.x && x <= obj.x + obj.img.width*obj.scale && y >= obj.y && y <= obj.y + obj.img.height*obj.scale; }
+
+let initialDist=0, initialAngle=0, initialScale=0, initialRotation=0;
+canvas.addEventListener('touchstart', e=>{ if(e.touches.length===2){ const dx=e.touches[1].clientX-e.touches[0].clientX; const dy=e.touches[1].clientY-e.touches[0].clientY; initialDist=Math.hypot(dx,dy); initialAngle=Math.atan2(dy,dx); initialScale=(target==='avatar'?avatar.scale:stamp.scale); initialRotation=(target==='avatar'?avatar.rotation:stamp.rotation); }} );
+canvas.addEventListener('touchmove', e=>{ if(e.touches.length===2){ const dx=e.touches[1].clientX-e.touches[0].clientX; const dy=e.touches[1].clientY-e.touches[0].clientY; const dist=Math.hypot(dx,dy); const angle=Math.atan2(dy,dx); const scaleChange=dist/initialDist; const rotationChange=angle-initialAngle; if(target==='avatar'){ avatar.scale=initialScale*scaleChange; avatar.rotation=initialRotation+rotationChange; }else{ stamp.scale=initialScale*scaleChange; stamp.rotation=initialRotation+rotationChange; lastStampState={...stamp}; } drawCanvas(); e.preventDefault(); }},{passive:false});
+
+function animateProperty(obj, prop, targetValue, duration=200){ const startValue=obj[prop]; const startTime=performance.now(); function animate(time){ const elapsed=time-startTime; const progress=Math.min(elapsed/duration,1); obj[prop]=startValue+(targetValue-startValue)*progress; drawCanvas(); if(progress<1) requestAnimationFrame(animate);} requestAnimationFrame(animate);}
+zoomInBtn.addEventListener('click', ()=>{ if(target==='stamp') animateProperty(stamp,'scale',stamp.scale*1.1); else animateProperty(avatar,'scale',avatar.scale*1.1); });
+zoomOutBtn.addEventListener('click', ()=>{ if(target==='stamp') animateProperty(stamp,'scale',stamp.scale*0.9); else animateProperty(avatar,'scale',avatar.scale*0.9); });
+rotateLeftBtn.addEventListener('click', ()=>{ if(target==='stamp') animateProperty(stamp,'rotation',stamp.rotation-Math.PI/18); else animateProperty(avatar,'rotation',avatar.rotation-Math.PI/18); });
+rotateRightBtn.addEventListener('click', ()=>{ if(target==='stamp') animateProperty(stamp,'rotation',stamp.rotation+Math.PI/18); else animateProperty(avatar,'rotation',avatar.rotation+Math.PI/18); });
+
+downloadBtn.addEventListener('click', ()=>{
+  const link=document.createElement('a'); 
+  link.download='my_national_avatar.png'; 
+  link.href=canvas.toDataURL('image/png'); 
+  link.click(); 
+});
+
+let movingControls=false, controlsOffsetX=0, controlsOffsetY=0;
+overlayControls.addEventListener('mousedown', e=>{
+  movingControls=true; 
+  const rect = overlayControls.getBoundingClientRect();
+  controlsOffsetX = e.clientX - rect.left;
+  controlsOffsetY = e.clientY - rect.top;
+});
+document.addEventListener('mousemove', e=>{
+  if(movingControls){
+    const canvasRect = canvas.getBoundingClientRect();
+    let left = e.clientX - canvasRect.left - controlsOffsetX;
+    let top = e.clientY - canvasRect.top - controlsOffsetY;
+    left = Math.max(0, Math.min(left, canvas.width - overlayControls.offsetWidth));
+    top = Math.max(0, Math.min(top, canvas.height - overlayControls.offsetHeight));
+    overlayControls.style.left = left + 'px';
+    overlayControls.style.top = top + 'px';
+  }
+});
+document.addEventListener('mouseup', ()=>{ movingControls=false; });
+</script>
+
+<!-- أسفل body مباشرة قبل </body> -->
+<div style="margin-top:20px; text-align:center; width:100%;">
+  <a href="https://twitter.com/yooocarful" target="_blank" 
+     style="display:inline-flex; align-items:center; gap:6px; text-decoration:none; color:#fff; font-weight:bold; font-size:16px;">
+    <!-- أيقونة X باللون الأبيض -->
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="#fff" viewBox="0 0 24 24">
+      <path d="M23.954 4.569c-.885.392-1.83.656-2.825.775 1.014-.608 1.794-1.574 2.163-2.724-.951.564-2.005.974-3.127 1.195-.897-.957-2.178-1.555-3.594-1.555-2.717 0-4.92 2.203-4.92 4.92 0 .39.045.765.127 1.124C7.691 8.094 4.066 6.13 1.64 3.161c-.427.733-.666 1.584-.666 2.491 0 1.72.875 3.236 2.205 4.124-.813-.026-1.577-.249-2.242-.616v.062c0 2.404 1.709 4.404 3.977 4.857-.417.113-.855.173-1.307.173-.319 0-.628-.03-.931-.086.629 1.964 2.445 3.392 4.6 3.431-1.68 1.316-3.809 2.102-6.115 2.102-.397 0-.788-.023-1.175-.068 2.179 1.396 4.768 2.212 7.557 2.212 9.054 0 14-7.496 14-13.986 0-.21-.004-.423-.014-.634.961-.695 1.8-1.562 2.46-2.549l-.047-.02z"/>
+    </svg>
+    @yooocarful
+  </a>
+</div>
+
+</body>
+</html>
